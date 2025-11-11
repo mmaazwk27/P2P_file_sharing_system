@@ -1,0 +1,17 @@
+# Terminal 1: start tracker
+python tracker.py
+
+# Terminal 2: start peer A on port 5001, sharing sample_files
+python peer.py --peer-id pA --port 5001 --shared-dir sample_files
+
+# Terminal 3: start peer B on port 5002, sharing sample_files_b (create folder and put file)
+python peer.py --peer-id pB --port 5002 --shared-dir sample_files_b
+
+# In peer B terminal, put files in sample_files_b (or create them before launch)
+# In peer A CLI:
+peer> lookup file1.txt
+peer> download file1.txt
+# It will show progress messages and verify hash + decompress.
+
+# To disable compression for testing:
+python peer.py --peer-id pC --port 5003 --shared-dir sample_files_c --no-compress

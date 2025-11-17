@@ -17,6 +17,7 @@ import os
 import json
 import time
 import uuid
+import random
 from utils import (
     calculate_sha256,
     compress_file_gzip,
@@ -201,7 +202,9 @@ def main():
     args = parser.parse_args()
 
     peer_id = args.peer_id
+    # peer_id = f"Peer_{int(time.time())}"  # unique ID based on timestamp
     host = args.host
+    # port = random.randint(5000, 6000)     # random port
     port = args.port
     shared_dir = args.shared_dir
     enable_compression = not args.no_compress

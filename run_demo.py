@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 import platform
-import socket
+import socket 
 
 def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")

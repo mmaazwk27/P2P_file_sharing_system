@@ -42,28 +42,28 @@ def handle_client(conn, addr):
                 ip = msg.get("ip")
                 port = int(msg.get("port"))
                 files = msg.get("files", [])
-                print(f"Tracker: Registering peer {peer_id} at {ip}:{port} with files: {files}")
+                print(f"Tracker: Registering peer '{peer_id}' at {ip}:{port} with files: {files}")
                 with index_lock:
                     for fname in files:
                         owners = index.setdefault(fname, [])
                         # avoid duplicates
                         if not any(o["peer_id"] == peer_id and o["port"] == port for o in owners):
                             owners.append({"peer_id": peer_id, "ip": ip, "port": port})
-                            print(f"Tracker: Added {fname} -> {peer_id}")
+                            print(f"Tracker: Added {fname} -> '{peer_id}'")
                 resp = {"type": "register_ack", "status": "ok"}
                 conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
             elif mtype == "lookup":
                 filename = msg.get("filename")
-                print(f"Tracker: Lookup request for {filename} from {addr}")
+                print(f"Tracker: Lookup request for '{filename}' from {addr}")
                 with index_lock:
                     owners = index.get(filename, [])
-                print(f"Tracker: Found {len(owners)} owners for {filename}")
+                print(f"Tracker: Found {len(owners)} owners for '{filename}'")
                 resp = {"type": "lookup_response", "owners": owners}
                 conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
             elif mtype == "unregister":
                 # optional: remove peer entries for provided files
                 peer_id = msg.get("peer_id")
-                print(f"Tracker: Unregistering peer {peer_id}")
+                print(f"Tracker: Unregistering peer '{peer_id}'")
                 with index_lock:
                     for fname, owners in list(index.items()):
                         index[fname] = [o for o in owners if o["peer_id"] != peer_id]

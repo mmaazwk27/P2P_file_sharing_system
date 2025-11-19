@@ -1,7 +1,7 @@
 """
 peer.py
 Peer program. Usage:
-    python peer.py --peer-id p1 --port 5001 --shared-dir ./sample_files --tracker 127.0.0.1:9000
+    python peer.py --peer-id "Display Name" --port 5001 --shared-dir ./shared_directory --tracker 127.0.0.1:9000
 
 Features:
 - Register with tracker upon start
@@ -126,6 +126,7 @@ def peer_server(listen_host, listen_port, shared_dir, enable_compression=True):
 def download_from_peer(peer_info, filename, dest_dir, enable_compression=True, verify_hash=True):
     ip = peer_info["ip"]
     port = int(peer_info["port"])
+    peer_id = peer_info["peer_id"]
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.settimeout(10)  # 10 second timeout
@@ -188,10 +189,10 @@ def download_from_peer(peer_info, filename, dest_dir, enable_compression=True, v
                     print(f"Got: {computed_hash}")
                     return False
 
-        print(f"Downloaded {filename} -> {final_path} (OK)")
+        print(f"Downloaded {filename} from {peer_id} -> {final_path} (OK)")
         return True
     except Exception as e:
-        print(f"Connection error to {ip}:{port}: {e}")
+        print(f"Connection error to {peer_id} at {ip}:{port}: {e}")
         s.close()
         return False
 
@@ -215,11 +216,11 @@ def get_local_ip():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--peer-id", default=str(uuid.uuid4())[:8])
+    parser.add_argument("--peer-id", required=True, help="Display name for this peer")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (use 0.0.0.0 for cross-device)")
     parser.add_argument("--port", type=int, default=5001)
     parser.add_argument("--tracker", default=TRACKER_DEFAULT, help="tracker_host:port")
-    parser.add_argument("--shared-dir", default="sample_files")
+    parser.add_argument("--shared-dir", default="shared_directory")
     parser.add_argument("--no-compress", action="store_true", help="disable compression")
     args = parser.parse_args()
 
@@ -237,8 +238,10 @@ def main():
 
     # Get the actual IP address that other devices can use to connect to this peer
     public_ip = get_local_ip()
+    print(f"Peer Display Name: {peer_id}")
     print(f"Local IP address: {public_ip}")
     print(f"Binding to: {host}:{port}")
+    print(f"Shared directory: {shared_dir}")
 
     # Start server thread
     threading.Thread(target=peer_server, args=(host, port, shared_dir, enable_compression), daemon=True).start()
@@ -254,7 +257,8 @@ def main():
         print("Could not register with tracker:", e)
 
     # Simple CLI loop
-    print("Peer CLI ready. Commands: list_local | lookup <filename> | download <filename> | exit")
+    print("\nPeer CLI ready. Commands: list_local | lookup <filename> | download <filename> | exit")
+    print("You can add files to the 'shared_directory' folder and they will be available for sharing.")
     while True:
         try:
             cmd = input("peer> ").strip()
@@ -264,15 +268,20 @@ def main():
             continue
         parts = cmd.split()
         if parts[0] == "list_local":
-            for f in list_shared_files(shared_dir):
-                print("-", f)
+            files = list_shared_files(shared_dir)
+            if files:
+                print("Your shared files:")
+                for f in files:
+                    print(f" - {f}")
+            else:
+                print("No files in shared directory. Add files to 'shared_directory' folder.")
         elif parts[0] == "lookup" and len(parts) >= 2:
             filename = " ".join(parts[1:])
             owners = lookup_filename(tracker_host, tracker_port, filename)
             if not owners:
                 print("No owners found for", filename)
             else:
-                print("Owners:")
+                print(f"Owners of '{filename}':")
                 for o in owners:
                     print(f" - {o['peer_id']} @ {o['ip']}:{o['port']}")
         elif parts[0] == "download" and len(parts) >= 2:
@@ -281,7 +290,7 @@ def main():
             if not owners:
                 print("No owners found for", filename)
             else:
-                print(f"Found {len(owners)} owner(s) for {filename}")
+                print(f"Found {len(owners)} owner(s) for '{filename}':")
                 for i, owner in enumerate(owners):
                     print(f"  {i+1}. {owner['peer_id']} @ {owner['ip']}:{owner['port']}")
                 

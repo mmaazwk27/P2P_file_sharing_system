@@ -27,6 +27,7 @@ from utils import (
     send_file,
     recv_file,
     CHUNK_SIZE,
+    show_download_progress,
 )
 
 TRACKER_DEFAULT = "127.0.0.1:9000"
@@ -129,7 +130,7 @@ def download_from_peer(peer_info, filename, dest_dir, enable_compression=True, v
     peer_id = peer_info["peer_id"]
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.settimeout(10)  # 10 second timeout
+        s.settimeout(30)  # 30 second timeout for larger files
         s.connect((ip, port))
         # request file
         req = {"type": "request_file", "filename": filename, "compress": enable_compression}
@@ -150,12 +151,36 @@ def download_from_peer(peer_info, filename, dest_dir, enable_compression=True, v
         compressed = meta.get("compressed", False)
         filesize = int(meta.get("filesize", 0))
         expected_hash = meta.get("hash")
+        
+        print(f"📥 Downloading '{filename}' from {peer_id}...")
+        print(f"   Size: {filesize} bytes | Compressed: {compressed}")
+        
         # prepare paths
         tmp_name = os.path.join(dest_dir, f".tmp_{filename}_{int(time.time())}.dat")
+        
         try:
-            recv_file(f, tmp_name, expected_size=filesize)
+            # Download with progress bar
+            remaining = filesize
+            received = 0
+            
+            with open(tmp_name, "wb") as file_obj:
+                while remaining > 0:
+                    chunk_size = min(CHUNK_SIZE, remaining)
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        raise ConnectionError("Connection closed before all bytes received")
+                    
+                    file_obj.write(chunk)
+                    received += len(chunk)
+                    remaining -= len(chunk)
+                    
+                    # Show progress bar
+                    show_download_progress(received, filesize)
+            
+            print("✅ Download completed!")
+            
         except Exception as e:
-            print("Receive error:", e)
+            print(f"\n❌ Receive error: {e}")
             f.close()
             s.close()
             if os.path.exists(tmp_name):
@@ -165,6 +190,8 @@ def download_from_peer(peer_info, filename, dest_dir, enable_compression=True, v
         f.close()
         s.close()
 
+        print("🔍 Verifying file integrity...")
+        
         # if compressed, decompress to final
         if compressed:
             final_path = os.path.join(dest_dir, filename)
@@ -174,25 +201,29 @@ def download_from_peer(peer_info, filename, dest_dir, enable_compression=True, v
             if verify_hash:
                 computed_hash = calculate_sha256(final_path)
                 if computed_hash != expected_hash:
-                    print("Hash mismatch after decompression!")
-                    print(f"Expected: {expected_hash}")
-                    print(f"Got: {computed_hash}")
+                    print("❌ Hash mismatch after decompression!")
+                    print(f"   Expected: {expected_hash}")
+                    print(f"   Got: {computed_hash}")
                     return False
+                else:
+                    print("✅ Hash verification passed!")
         else:
             final_path = os.path.join(dest_dir, filename)
             os.replace(tmp_name, final_path)
             if verify_hash:
                 computed_hash = calculate_sha256(final_path)
                 if computed_hash != expected_hash:
-                    print("Hash mismatch!")
-                    print(f"Expected: {expected_hash}")
-                    print(f"Got: {computed_hash}")
+                    print("❌ Hash mismatch!")
+                    print(f"   Expected: {expected_hash}")
+                    print(f"   Got: {computed_hash}")
                     return False
+                else:
+                    print("✅ Hash verification passed!")
 
-        print(f"Downloaded {filename} from {peer_id} -> {final_path} (OK)")
+        print(f"🎉 Successfully downloaded '{filename}' from {peer_id} -> {final_path}")
         return True
     except Exception as e:
-        print(f"Connection error to {peer_id} at {ip}:{port}: {e}")
+        print(f"❌ Connection error to {peer_id} at {ip}:{port}: {e}")
         s.close()
         return False
 
@@ -297,15 +328,15 @@ def main():
                 # Try each owner until one works
                 success = False
                 for owner in owners:
-                    print(f"Trying to download from {owner['peer_id']} at {owner['ip']}:{owner['port']}")
+                    print(f"\n🔄 Attempting download from {owner['peer_id']}...")
                     if download_from_peer(owner, filename, dest_dir=".", enable_compression=enable_compression, verify_hash=True):
                         success = True
                         break
                     else:
-                        print(f"Failed to download from {owner['peer_id']}")
+                        print(f"❌ Failed to download from {owner['peer_id']}")
                 
                 if not success:
-                    print("Failed to download from all available owners")
+                    print("❌ Failed to download from all available owners")
         elif parts[0] == "exit":
             print("Exiting peer.")
             break

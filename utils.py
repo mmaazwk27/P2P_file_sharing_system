@@ -10,6 +10,7 @@ import shutil
 import os
 import json
 import socket
+import sys
 from typing import Tuple
 
 CHUNK_SIZE = 64 * 1024  # 64KB
@@ -84,3 +85,22 @@ def recv_file(sock_file, dest_path: str, expected_size: int = None) -> None:
                     raise ConnectionError("Connection closed before all bytes received")
                 f.write(chunk)
                 remaining -= len(chunk)
+
+
+def show_download_progress(received, total, bar_length=40):
+    """
+    Show a visual progress bar for file downloads.
+    """
+    if total == 0:
+        return
+    
+    percent = float(received) / total
+    arrow = '=' * int(round(percent * bar_length) - 1) + '>'
+    spaces = ' ' * (bar_length - len(arrow))
+    
+    progress_bar = f"[{arrow}{spaces}] {percent:.1%} ({received}/{total} bytes)"
+    sys.stdout.write('\r' + progress_bar)
+    sys.stdout.flush()
+    
+    if received >= total:
+        sys.stdout.write('\n')

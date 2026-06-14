@@ -2,6 +2,9 @@
 
 
 PyP2P is a minimalist, educational P2P (Peer-to-Peer) file-sharing system built using Python's standard library. It demonstrates the fundamentals of distributed systems, socket programming, and data integrity verification.
+## 🛠 Tech Stack
+
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)&nbsp;
 
 ## 🚀 Features
 
@@ -28,6 +31,10 @@ PyP2P is a minimalist, educational P2P (Peer-to-Peer) file-sharing system built 
    ```bash
    python run_demo.py
 3. Follow the on-screen prompts to start either the Tracker or a Peer.
+
+## 👨‍💻 Author 
+**Muhammad Maaz Wali Khan**   
+🔗 [GitHub: @mmaazwk27](https://github.com/mmaazwk27)
 
 ## 🛡️ Security Disclaimer
 This project is for educational purposes only. It lacks enterprise-grade encryption and authentication. Please ensure that the shared_directory does not contain sensitive personal data.

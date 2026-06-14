@@ -59,19 +59,13 @@ def lookup_filename(tracker_host, tracker_port, filename):
 
 
 def handle_peer_connection(conn, addr, shared_dir, enable_compression=True):
-    """
-    Protocol for peer->peer communication (simple JSON messages followed by raw bytes for file).
-    Messages:
-    - request_file: {"type":"request_file", "filename":"a.txt", "compress":True}
-    - Sender responds with metadata: {"type":"file_meta","filename":"a.txt","compressed":True,"filesize":12345,"hash":"..."}
-      followed by raw file bytes of given size.
-    - On errors, respond with {"type":"error","msg":"..."}
-    """
-    
     def log_message(message):
         print(f"[Server to {addr[0]}:{addr[1]}] {message}")
     
+    # 1. Sanitize the path to prevent Directory Traversal
+    shared_dir_abs = os.path.abspath(shared_dir)
     sock_file = conn.makefile("rb")
+    
     try:
         req = recv_json(sock_file)
         if req.get("type") != "request_file":
@@ -79,60 +73,61 @@ def handle_peer_connection(conn, addr, shared_dir, enable_compression=True):
             return
         
         filename = req.get("filename")
-        compress = req.get("compress", enable_compression)
-        src_path = os.path.join(shared_dir, filename)
-        
-        log_message(f"📨 REQUEST: Received file request for '{filename}'")
-        log_message(f"⚙️ SETTINGS: Compression requested: {compress}")
-        
-        if not os.path.exists(src_path):
-            log_message(f"❌ ERROR: File '{filename}' not found")
+        # Ensure the filename is treated as a filename, not a path
+        safe_filename = os.path.basename(filename) 
+        src_path = os.path.abspath(os.path.join(shared_dir_abs, safe_filename))
+
+        # Check if the resolved path is still within the shared_dir
+        if not src_path.startswith(shared_dir_abs):
+            log_message(f"❌ SECURITY ALERT: Attempted path traversal: {filename}")
+            send_json(conn, {"type": "error", "msg": "Access denied"})
+            return
+
+        # 2. Validate file existence and type
+        if not os.path.exists(src_path) or not os.path.isfile(src_path):
+            log_message(f"❌ ERROR: File '{safe_filename}' not found or invalid")
             send_json(conn, {"type": "error", "msg": "file not found"})
             return
 
-        # If compress requested, create a temp gz file
-        if compress:
-            tmp_name = src_path + ".gz"
-            log_message("🗜️ COMPRESSION: Starting file compression...")
-            compress_file_gzip(src_path, tmp_name, log_callback=log_message)
-            to_send_path = tmp_name
-        else:
-            to_send_path = src_path
-            log_message("⚡ SKIPPING: Compression not requested, sending original file")
-
-        filesize = os.path.getsize(to_send_path)
-        log_message(f"🔍 HASHING: Calculating file hash...")
-        fhash = calculate_sha256(src_path, log_callback=log_message)  # always hash original file
-
-        meta = {"type": "file_meta", "filename": filename, "compressed": compress, "filesize": filesize, "hash": fhash}
-        log_message(f"📊 METADATA: Sending file metadata - Size: {filesize}, Compressed: {compress}")
-        send_json(conn, meta)
+        compress = req.get("compress", enable_compression)
         
-        # now stream raw bytes
-        log_message("🚀 TRANSFER: Starting file data transfer...")
-        send_file(conn, to_send_path, log_callback=log_message)
+        # 3. Robust Temp File Handling
+        tmp_name = src_path + ".gz" if compress else None
         
-        # cleanup tmp if created
-        if compress and os.path.exists(tmp_name):
-            os.remove(tmp_name)
-            log_message("🧹 CLEANUP: Temporary compressed file removed")
+        try:
+            if compress:
+                log_message(f"🗜️ COMPRESSION: Starting compression...")
+                compress_file_gzip(src_path, tmp_name, log_callback=log_message)
+                to_send_path = tmp_name
+            else:
+                to_send_path = src_path
+                log_message("⚡ SKIPPING: Sending original file")
+
+            filesize = os.path.getsize(to_send_path)
+            fhash = calculate_sha256(src_path, log_callback=log_message)
+
+            meta = {"type": "file_meta", "filename": safe_filename, "compressed": compress, "filesize": filesize, "hash": fhash}
+            send_json(conn, meta)
             
-        log_message("✅ SUCCESS: File transfer completed successfully")
-        
+            log_message("🚀 TRANSFER: Starting file data transfer...")
+            send_file(conn, to_send_path, log_callback=log_message)
+            log_message("✅ SUCCESS: File transfer completed")
+
+        finally:
+            # Always ensure temporary file is removed if it was created
+            if tmp_name and os.path.exists(tmp_name):
+                os.remove(tmp_name)
+                log_message("🧹 CLEANUP: Temporary file removed")
+            
     except Exception as e:
-        error_msg = f"❌ ERROR in peer connection: {e}"
-        print(error_msg)
+        log_message(f"❌ ERROR in peer connection: {e}")
         try:
             send_json(conn, {"type": "error", "msg": str(e)})
-        except Exception:
+        except:
             pass
     finally:
-        try:
-            sock_file.close()
-        except Exception:
-            pass
+        sock_file.close()
         conn.close()
-
 
 def peer_server(listen_host, listen_port, shared_dir, enable_compression=True):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
